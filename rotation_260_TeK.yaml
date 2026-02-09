@@ -1,0 +1,329 @@
+version: 1
+author: Tek
+class: rogue
+spec: 260
+name: TeK GOAT Rouge
+description: Only tabs to interrupt if enemies within 6 yards | M+ Affix Support
+entry: main
+
+movement_allowed: true
+
+morphs:
+  sinister_strike: ambush
+  dispatch: coup_de_grace
+
+config:
+  mainhand_poison:
+    label: "Main Hand Poison"
+    type: dropdown
+    default: 1
+    options:
+      - label: "Instant Poison"
+        value: 1
+      - label: "Deadly Poison"
+        value: 2
+      - label: "Wound Poison"
+        value: 3
+
+  offhand_poison:
+    label: "Off Hand Poison"
+    type: dropdown
+    default: 1
+    options:
+      - label: "Crippling Poison"
+        value: 1
+      - label: "Numbing Poison"
+        value: 2
+      - label: "Atrophic Poison"
+        value: 3
+
+  auto_stealth:
+    label: "Auto Stealth"
+    type: checkbox
+    default: true
+
+  # === 12.0 ROLL THE BONES CONFIG ===
+  rtb_reroll_stage:
+    label: "RTB Reroll Stage"
+    type: dropdown
+    default: 1
+    options:
+      - label: "Stage 1 Only"
+        value: 1
+      - label: "No Buff Only"
+        value: 0
+    description: "Reroll at Stage 1 or only when no buff"
+
+  keep_it_rolling_min_stage:
+    label: "KIR Min Stage"
+    type: dropdown
+    default: 2
+    options:
+      - label: "Stage 2+"
+        value: 2
+      - label: "Stage 3+"
+        value: 3
+      - label: "Stage 4 Only"
+        value: 4
+    description: "Minimum stage to use Keep It Rolling"
+
+  # === HERO TALENT SELECTION ===
+  hero_tree:
+    label: "Hero Talent Tree"
+    type: dropdown
+    default: 1
+    options:
+      - label: "Fatebound"
+        value: 1
+      - label: "Trickster"
+        value: 2
+
+  auto_defensives:
+    label: "Auto Defensives"
+    type: checkbox
+    default: true
+    description: "Automatically use defensive abilities"
+
+  crimson_vial_hp:
+    label: "Crimson Vial HP %"
+    type: slider
+    min: 20
+    max: 80
+    default: 50
+    description: "Use Crimson Vial when health drops below this %"
+
+  interrupt_timing_min:
+    label: "Interrupt Delay Min (ms)"
+    type: slider
+    min: 0
+    max: 500
+    default: 100
+    description: "Minimum delay before interrupt (humanization)"
+
+  interrupt_timing_max:
+    label: "Interrupt Delay Max (ms)"
+    type: slider
+    min: 100
+    max: 1000
+    default: 400
+    description: "Maximum delay before interrupt (humanization)"
+
+  # === M+ AFFIX CONFIG ===
+  affix_handling:
+    label: "Auto Affix Handling"
+    type: checkbox
+    default: true
+    description: "Automatically handle M+ affixes (Voidbound, Ascendant)"
+
+variables:
+  target_valid: target.exists&target.enemy&target.alive
+  target_attackable: var.target_valid&target.range<=8
+  enemies_in_melee: enemies.8y
+
+  # === M+ AFFIX ===
+  affix_priority_mode: config.affix_handling&(target.name="Void Emissary"|(target.name="Ascendant Orb"&target.casting))
+
+  # === 12.0 ROLL THE BONES ===
+  rtb_stage: buff.roll_the_bones.stack
+
+  # === HERO TALENT TREES ===
+  hero_tree_fatebound: config.hero_tree=1
+  hero_tree_trickster: config.hero_tree=2
+
+  # === CORE COMBAT STATE ===
+  adrenaline_rush_up: buff.adrenaline_rush.up
+  bte_ready: cooldown.between_the_eyes.ready
+  killing_spree_ready: cooldown.killing_spree.ready
+  opportunity_up: buff.opportunity.up
+  audacity_up: buff.audacity.up
+
+  # === FINISHER CONDITION FROM SIMC ===
+  finish_condition: combo_points>=combo_points.max-1-(var.hero_tree_fatebound&!var.bte_ready)
+
+  # === HEALTH ===
+  health_critical: health.pct<30
+
+  # === TEK INTERRUPT SYSTEM ===
+  kick_ready: cooldown.kick.ready
+  interrupt_delay_min: config.interrupt_timing_min/1000
+  interrupt_delay_max: config.interrupt_timing_max/1000
+  safe_interrupt_window: target.casting.elapsed>=var.interrupt_delay_min&target.casting.elapsed<=var.interrupt_delay_max
+  safe_interrupt_window_late: target.casting.elapsed>=var.interrupt_delay_max&target.casting.remains>0.3
+
+lists:
+  main:
+    - return,if=!state.rotation|player.mounted
+
+    # === POISONS (out of combat OK) ===
+    - instant_poison,interrupt=true,casting_check=all,range_check=none,moving=false,if=config.mainhand_poison=1&!buff.instant_poison.up&!player.mounted
+    - deadly_poison,interrupt=true,casting_check=all,range_check=none,moving=false,if=config.mainhand_poison=2&!buff.deadly_poison.up&!player.mounted
+    - wound_poison,interrupt=true,casting_check=all,range_check=none,moving=false,if=config.mainhand_poison=3&!buff.wound_poison.up&!player.mounted
+    - crippling_poison,interrupt=true,casting_check=all,range_check=none,moving=false,if=config.offhand_poison=1&!buff.crippling_poison.up&!player.mounted
+    - numbing_poison,interrupt=true,casting_check=all,range_check=none,moving=false,if=config.offhand_poison=2&!buff.numbing_poison.up&!player.mounted
+    - atrophic_poison,interrupt=true,casting_check=all,range_check=none,moving=false,if=config.offhand_poison=3&!buff.atrophic_poison.up&!player.mounted
+
+    # === STEALTH (out of combat OK) ===
+    - stealth,interrupt=true,casting_check=all,range_check=none,moving=false,if=config.auto_stealth&cooldown.stealth.ready&!player.mounted&!buff.stealth.up&!player.casting
+
+    # === PRECOMBAT: RTB at 8y, AR at 6y — staggered so both fire before pull (Trickster only) ===
+    - roll_the_bones,if=!player.combat&buff.stealth.up&!buff.roll_the_bones.up&var.hero_tree_trickster&enemies.inrange(8)>=1
+    - adrenaline_rush,if=!player.combat&buff.stealth.up&cooldown.adrenaline_rush.ready&var.hero_tree_trickster&enemies.inrange(6)>=1
+
+    # === TEK AUTO-TARGET (combat only, melee range only) ===
+    - target_enemy,if=player.combat&(!target.exists|target.range>6|target.dead)&enemies.inrange(6)>=1
+
+    # === AFFIX INTERCEPT: ABOVE interrupts — run_action_list blocks everything below ===
+    # When active: no interrupts, no auto-target tab, no normal rotation
+    # When affix mob dies: falls through, interrupts and rotation resume automatically
+    - run_action_list,name=affix_abilities,if=player.combat&var.affix_priority_mode
+
+    # === TEK INTERRUPTS (combat only, skipped entirely during affix burn) ===
+    - call_action_list,name=interrupts,if=player.combat
+
+    # === DEFENSIVES (combat only) ===
+    - call_action_list,name=defensives,if=player.combat&config.auto_defensives
+
+    # === UTILITY ===
+    - call_action_list,name=utility,if=var.target_attackable
+
+    # === OPENER (stealth only, first 5 seconds) ===
+    - call_action_list,name=opener,if=!player.combat.time>5&(buff.stealth.up|buff.vanish.up|buff.shadow_dance.up)
+
+    # === CORE ROTATION (combat only) ===
+    - call_action_list,name=cooldowns,if=player.combat&var.target_attackable
+    - run_action_list,name=finish,if=player.combat&var.finish_condition
+    - call_action_list,name=build,if=player.combat
+
+    # === RACIAL FILLERS (combat only) ===
+    - arcane_torrent,if=player.combat&energy.deficit>=15+energy.regen
+    - arcane_pulse,if=player.combat
+    - lights_judgment,if=player.combat
+    - bag_of_tricks,if=player.combat
+
+  # === AFFIX ABILITIES: Full burn rotation with defensives and cooldowns ===
+  # Entered via run_action_list — blocks all normal rotation, interrupts, and auto-target
+  affix_abilities:
+    # --- Defensives (still need to survive during burn) ---
+    - cloak_of_shadows,if=cooldown.cloak_of_shadows.ready&!buff.cloak_of_shadows.up&defensives.ready.magic
+    - feint,if=cooldown.feint.ready&defensives.ready.aoe
+    - evasion,if=cooldown.evasion.ready&!buff.evasion.up&(defensives.ready|var.health_critical)
+    - crimson_vial,if=health.pct<config.crimson_vial_hp&cooldown.crimson_vial.ready
+
+    # --- Cooldowns (full DPS on affix target) ---
+    - adrenaline_rush,if=!var.adrenaline_rush_up
+    - blade_flurry,if=var.enemies_in_melee>=2&buff.blade_flurry.remains<gcd
+    - roll_the_bones,if=!buff.roll_the_bones.up
+    - trinket_1,if=trinket_1.ready
+    - trinket_2,if=trinket_2.ready
+
+    # --- Finishers ---
+    - between_the_eyes,if=combo_points>=combo_points.max-1
+    - dispatch,if=combo_points>=combo_points.max-1
+
+    # --- Builders ---
+    - ambush,if=talent.hidden_opportunity&var.audacity_up
+    - pistol_shot,if=var.opportunity_up
+    - ambush,if=talent.hidden_opportunity
+    - sinister_strike
+
+    # --- Ascendant Orb Blind ---
+    - blind,if=target.name="Ascendant Orb"&target.casting&cooldown.blind.ready
+
+  opener:
+    # Trickster: AR on pull (RTB already done precombat), Fatebound: gets AR from cooldowns
+    - adrenaline_rush,if=cooldown.adrenaline_rush.ready&var.hero_tree_trickster
+    - ambush,if=combo_points<5
+    - sinister_strike,if=combo_points<5
+
+  cooldowns:
+    - adrenaline_rush,if=!var.adrenaline_rush_up&(!var.finish_condition|!talent.improved_adrenaline_rush)
+    - blade_flurry,if=var.enemies_in_melee>=2&buff.blade_flurry.remains<gcd
+    - preparation,if=cooldown.adrenaline_rush.remains>30&!var.bte_ready&(!var.killing_spree_ready|!var.hero_tree_trickster)|fight_remains<30
+    # KIR: Stage 3+ fires unconditionally, stage 2 has guards (SimC)
+    - keep_it_rolling,if=var.rtb_stage>=3
+    - keep_it_rolling,if=var.rtb_stage>=config.keep_it_rolling_min_stage&var.rtb_stage<3&buff.roll_the_bones.remains<cooldown.adrenaline_rush.remains&!buff.loaded_dice.up&(cooldown.preparation.remains|!talent.preparation)
+    - roll_the_bones,if=!buff.roll_the_bones.up|var.rtb_stage=1
+    - blade_rush,if=set_bonus.mid1_4pc&!buff.whirl_of_blades.up|var.enemies_in_melee=1&energy.time_to_max>2|var.enemies_in_melee>=2
+    - vanish,if=!var.finish_condition&talent.hidden_opportunity&!var.audacity_up&!var.opportunity_up
+    - shadowmeld,if=!var.finish_condition&talent.hidden_opportunity&!var.audacity_up&!var.opportunity_up
+    - combat_potion,if=buff.bloodlust.react|fight_remains<30|var.adrenaline_rush_up
+    - blood_fury
+    - berserking
+    - fireblood
+    - ancestral_call
+    - trinket_1,if=trinket_1.ready&(buff.between_the_eyes.up|trinket_1.has_stat|fight_remains<=20)
+    - trinket_2,if=trinket_2.ready&(buff.between_the_eyes.up|trinket_2.has_stat|fight_remains<=20)
+
+  finish:
+    - dispatch,if=!buff.slice_and_dice.up
+    - between_the_eyes
+    - killing_spree,if=var.killing_spree_ready&energy>=25
+    - coup_de_grace
+    - dispatch
+
+  build:
+    - ambush,if=talent.hidden_opportunity&var.audacity_up
+    - blade_flurry,if=talent.deft_maneuvers&var.enemies_in_melee>=4
+    - coup_de_grace,if=buff.disorienting_strikes.up
+    - pistol_shot,if=talent.audacity&talent.hidden_opportunity&var.opportunity_up&!var.audacity_up
+    - pistol_shot,if=talent.fan_the_hammer&var.opportunity_up&(buff.opportunity.stack>=6|buff.opportunity.remains<2)
+    - pistol_shot,if=talent.fan_the_hammer&var.opportunity_up&(combo_points.deficit>=(1+talent.quick_draw+(talent.quick_draw*talent.fan_the_hammer.rank))&(combo_points>1|var.rtb_stage<2|!talent.deal_fate))
+    - pistol_shot,if=!talent.fan_the_hammer&var.opportunity_up&(energy.deficit>energy.regen*1.5|combo_points.deficit<=1|talent.quick_draw.enabled|talent.audacity.enabled&!var.audacity_up)
+    - ambush,if=talent.hidden_opportunity
+    - sinister_strike
+
+  defensives:
+    # Cloak: dangerous magic cast from _defensives.yaml
+    #- cloak_of_shadows,if=player.combat&cooldown.cloak_of_shadows.ready&!buff.cloak_of_shadows.up&defensives.ready.magic
+    - cloak_of_shadows,if=player.combat&player.combat.time>5&cooldown.cloak_of_shadows.ready&!buff.cloak_of_shadows.up&player.has_magic_debuff
+    # Feint: dangerous AoE cast from _defensives.yaml
+    - feint,if=player.combat&cooldown.feint.ready&defensives.ready.aoe
+    # Evasion: dangerous cast or critical HP
+    - evasion,if=player.combat&cooldown.evasion.ready&!buff.evasion.up&(defensives.ready|var.health_critical)
+    # Crimson Vial: configurable HP threshold
+    - crimson_vial,if=player.combat&health.pct<config.crimson_vial_hp&cooldown.crimson_vial.ready
+    # Emergency consumables
+    - healthstone,if=player.combat&healthstone.ready&var.health_critical
+    - health_potion,if=player.combat&health_potion.ready&var.health_critical&!healthstone.ready
+
+  utility:
+    - sprint,if=player.moving&!player.combat&cooldown.sprint.ready&target.exists&target.alive&target.range>15
+    - grappling_hook,if=talent.grappling_hook.enabled&player.moving&cooldown.grappling_hook.ready&target.range>20
+    - soothe,if=talent.trickster.enabled&target.has_enrage
+
+  interrupts:
+    # ====================================================================
+    # TEK ENHANCED INTERRUPT SYSTEM
+    # ONLY reacts to _interrupts.yaml priority spells.
+    # Completely disabled during affix burn (run_action_list blocks this)
+    # ====================================================================
+
+    # === ASCENDANT ORB AUTO-TARGET ===
+    - target_enemy,if=config.affix_handling&enemies.name("Ascendant Orb").casting&cooldown.blind.ready&enemies.inrange(6)>=1
+
+    # === AUTO-TARGET FOR PRIORITY SPELLS ===
+    - target_enemy,if=(interrupts.8y.ready|interrupts.8y.stun.ready)&!interrupts.target.ready&!interrupts.target.stun.ready&(var.kick_ready|cooldown.kidney_shot.ready&combo_points>=4|cooldown.blind.ready)&enemies.inrange(6)>=1
+
+    # === KICK (FIRST) ===
+    - kick,if=interrupts.target.ready&var.kick_ready&var.safe_interrupt_window&!target.boss
+    - kick,if=interrupts.target.ready&var.kick_ready&var.safe_interrupt_window_late&!target.boss
+
+    # === KIDNEY SHOT (SECOND) ===
+    - kidney_shot,if=(interrupts.target.ready|interrupts.target.stun.ready)&combo_points>=4&cooldown.kidney_shot.ready&target.casting.elapsed>=0.1&!target.boss
+
+    # === BLIND (THIRD) ===
+    - blind,if=(interrupts.target.ready|interrupts.target.stun.ready)&cooldown.blind.ready&target.casting.elapsed>=0.1&!target.boss
+
+    # === STUN FALLBACKS ===
+    - cheap_shot,if=(interrupts.target.ready|interrupts.target.stun.ready)&buff.subterfuge.up&combo_points<combo_points.max&target.casting.elapsed>=0.1&!target.boss
+    - gouge,if=(interrupts.target.ready|interrupts.target.stun.ready)&target.casting.elapsed>=0.1&!target.boss
+
+    # === MOUSEOVER ===
+    - kick.mouseover,if=interrupts.mouseover.ready&var.kick_ready&mouseover.casting.elapsed>=var.interrupt_delay_min&!mouseover.boss
+    - kidney_shot.mouseover,if=(interrupts.mouseover.ready|interrupts.mouseover.stun.ready)&combo_points>=4&cooldown.kidney_shot.ready&mouseover.casting.elapsed>=0.1&!mouseover.boss
+    - blind.mouseover,if=(interrupts.mouseover.ready|interrupts.mouseover.stun.ready)&cooldown.blind.ready&mouseover.casting.elapsed>=0.1&!mouseover.boss
+
+    # === FOCUS ===
+    - kick.focus,if=interrupts.focus.ready&var.kick_ready&focus.casting.elapsed>=var.interrupt_delay_min&!focus.boss
+    - kidney_shot.focus,if=(interrupts.focus.ready|interrupts.focus.stun.ready)&combo_points>=4&cooldown.kidney_shot.ready&focus.casting.elapsed>=0.1&!focus.boss
+    - blind.focus,if=(interrupts.focus.ready|interrupts.focus.stun.ready)&cooldown.blind.ready&focus.casting.elapsed>=0.1&!focus.boss
