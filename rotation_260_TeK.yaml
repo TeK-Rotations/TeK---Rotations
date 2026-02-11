@@ -84,6 +84,12 @@ config:
     default: true
     description: "Automatically use defensive abilities"
 
+  auto_target_interrupts:
+    label: "Auto Target Interrupts"
+    type: checkbox
+    default: true
+    description: "Automatically switch targets to interrupt priority spells"
+
   crimson_vial_hp:
     label: "Crimson Vial HP %"
     type: slider
@@ -292,17 +298,17 @@ lists:
     - soothe,if=talent.trickster.enabled&target.has_enrage
 
   interrupts:
-    # ====================================================================
+    # ===============aaaa=====================================================
     # TEK ENHANCED INTERRUPT SYSTEM
     # ONLY reacts to _interrupts.yaml priority spells.
     # Completely disabled during affix burn (run_action_list blocks this)
     # ====================================================================
 
     # === ASCENDANT ORB AUTO-TARGET ===
-    - target_enemy,if=config.affix_handling&enemies.name("Ascendant Orb").casting&cooldown.blind.ready&enemies.inrange(6)>=1
+    - target_enemy,if=config.affix_handling&enemies.name("Ascendant Orb").casting&cooldown.blind.ready&enemies.inrange(6)>=1&config.auto_target_interrupts
 
     # === AUTO-TARGET FOR PRIORITY SPELLS ===
-    - target_enemy,if=(interrupts.8y.ready|interrupts.8y.stun.ready)&!interrupts.target.ready&!interrupts.target.stun.ready&(var.kick_ready|cooldown.kidney_shot.ready&combo_points>=4|cooldown.blind.ready)&enemies.inrange(6)>=1
+    - target_enemy,if=(interrupts.8y.ready|interrupts.8y.stun.ready)&!interrupts.target.ready&!interrupts.target.stun.ready&(var.kick_ready|cooldown.kidney_shot.ready&combo_points>=4|cooldown.blind.ready)&enemies.inrange(6)>=1&config.auto_target_interrupts
 
     # === KICK (FIRST) ===
     - kick,if=interrupts.target.ready&var.kick_ready&var.safe_interrupt_window&!target.boss
