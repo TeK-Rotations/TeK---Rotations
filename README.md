@@ -1,25 +1,13 @@
-# TeK---Rotations
-TeK GOAT Rogue is a Mythic+–focused Outlaw Rogue rotation built for players who want strong, consistent performance with minimal micromanagement. It intelligently handles single-target, cleave, and AoE, adapting in real time to enemy count, combat state, and talent choices.
+TeK GOAT is a Mythic+ performance suite built for players who want elite results without micromanaging every global. Designed for high-end dungeon pressure in World of Warcraft, each profile adapts in real time to enemy count, talents, combat state, cooldown alignment, and movement—delivering clean, consistent output that feels human, not scripted.
 
-The rotation features a smart interrupt system that reacts only when necessary, prioritizing dangerous casts and chaining Kick, Kidney Shot, Blind, Cheap Shot, and Gouge in a layered, human-like way. Interrupts include intentional delays and variability for realism, while supporting target, mouseover, and focus logic without breaking your main target or funnel damage.
+TeK GOAT Rogue (Outlaw) drives intelligent single-target, cleave, and AoE while maintaining funnel priority. The interrupt system is layered and realistic—prioritizing dangerous casts and chaining Kick, Kidney Shot, Blind, Cheap Shot, and Gouge with intentional delay windows. It supports target, mouseover, and focus logic without breaking main-target damage. Roll the Bones is fully optimized (including Keep It Rolling logic), cooldowns are stacked correctly, and hero talents for Fatebound and Trickster are fully supported. Voidbound Emissaries are manually targeted by design—once selected, the system commits fully until the threat is eliminated, then flows back into rotation seamlessly.
 
-For Mythic+ affixes, TeK GOAT Rogue provides damage optimization and survival logic, but Voidbound Emissaries must be manually targeted. Once targeted, the rotation automatically commits full damage and defensives until the emissary is dealt with, then seamlessly resumes normal behavior.
+TeK GOAT Elemental delivers controlled burst and precision utility without auto-tab chaos. Mouseover interrupts prioritize Wind Shear, then Capacitor Totem, then Thunderstorm—while you stay locked on your primary target for maximum funnel value. Maelstrom management prevents overcapping and selects the correct spender automatically. Ascendance, Stormkeeper, racials, trinkets, and potions are properly stacked for real burst windows. Movement is fully supported with Spiritwalker’s Grace and optional Ghost Wolf automation, and defensives trigger intelligently at configurable thresholds.
 
-The profile also includes auto-stealth, auto-poisons, pre-pull logic, opener handling, cooldown management, Roll the Bones optimization (including Keep It Rolling logic), and hero talent support for both Fatebound and Trickster. Defensive abilities trigger automatically based on configurable health thresholds to keep you alive without panic buttons.
+TeK GOAT Arcane Mage is a fully engineered burst system built for Sunfury and Spellslinger. It auto-detects hero talents, syncs steroid trinkets by duration, and perfectly aligns Arcane Surge with Touch of the Magi for maximum Salvo value. Movement logic keeps damage flowing with Presence of Mind, Orb timing, and smart Barrage dumps—no wasted stacks, no missed windows. Defensives are proactive and reactive with configurable HP thresholds, auto-barrier logic, emergency Ice Cold and Greater Invisibility, plus dangerous-cast detection. Interrupts, spellsteal, curse removal, auto-targeting, and end-of-fight resource dumps are all handled seamlessly.
 
-Everything is movement-safe, configurable, and designed to feel natural—so you can focus on mechanics and positioning while the rotation handles execution.
+Movement-safe. Fully configurable. Dungeon-ready.
 
-Built to perform. Built to adapt. Built to stop what matters.
-
-
-TeK GOAT Elemental is a Mythic+–focused Elemental Shaman rotation built for players who want high damage, clean burst windows, and controlled utility without constant micromanagement. It dynamically handles single-target and AoE, automatically adapting to enemy count, movement, combat state, and talent selections in real time.
-
-The rotation features a fully built-in mouseover interrupt system designed to feel natural and intentional. There’s no auto-tab targeting—you stay locked on your main target for funnel damage. Simply hover a caster’s nameplate and the system prioritizes Wind Shear first, then Capacitor Totem, and optionally Thunderstorm if needed. Interrupts include configurable delay windows to simulate human reaction timing, preventing robotic instant kicks while still reliably stopping dangerous casts.
-
-Damage optimization is handled intelligently. Maelstrom spending adjusts automatically to avoid overcapping while choosing the correct spender—Earth Shock, Earthquake, or Elemental Blast—based on talents and target count. Cooldowns such as Ascendance, Stormkeeper, racials, trinkets, weapon on-use effects, and potions are aligned for proper burst stacking instead of being used randomly.
-
-Movement is fully supported. Spiritwalker’s Grace allows casting on the move, and Ghost Wolf can automatically activate (with a configurable delay) when repositioning is required. Defensive logic includes a customizable Astral Shift health threshold along with automatic Healthstone and potion usage for critical situations.
-
-The profile also maintains weapon enchants, shields, pre-combat setup, and auto-targeting if your current target dies or drops out of range. Everything is configurable, movement-safe, and built to feel smooth in real dungeon environments.
-
-Built to burst. Built to move. Built to interrupt what matters.
+Built to burst.
+Built to adapt.
+Built to stop what matters.
