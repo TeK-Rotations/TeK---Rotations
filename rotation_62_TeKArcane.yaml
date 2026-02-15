@@ -91,6 +91,14 @@ config:
     type: checkbox
     default: true
 
+  fresh_pack_salvo_threshold:
+    label: "Fresh Pack Burst Threshold (skip pooling below this Salvo)"
+    section: "Cooldowns"
+    type: slider
+    min: 0
+    max: 20
+    default: 15
+
 # ============================================================================
 # VARIABLES
 # ============================================================================
@@ -100,8 +108,36 @@ variables:
   is_spellslinger: "(config.hero_tree=2)|(config.hero_tree=0&talent.splintering_sorcery)"
   has_orb_mastery: "(config.orb_mastery=1)|(config.orb_mastery=0&talent.orb_mastery)"
 
-  # Opener tracking
-  opener: "player.combat.time<10&debuff.touch_of_the_magi.down"
+  # =========================================================================
+  # OPENER / FRESH PACK BURST BYPASS
+  # =========================================================================
+  #
+  # first_burst:
+  #   True during the very first cooldown cycle of a combat session.
+  #   combat.time < 10s AND we haven't applied Touch yet.
+  #   → Skip Salvo pooling entirely, go straight to Surge → TotM.
+  #
+  # fresh_pack:
+  #   True when we engage a new enemy pack mid-combat and CDs are ready
+  #   but Salvo is below the pooling threshold (configurable, default 15).
+  #   Detection: target has no player debuffs AND nearby enemies are mostly
+  #   at high HP AND both Surge + TotM are available.
+  #   → Skip the 20-stack requirement and burst immediately.
+  #
+  # skip_salvo_pooling:
+  #   Master bypass — true if EITHER first_burst or fresh_pack is true.
+  #   Used to gate the Salvo building line in cooldowns and to allow
+  #   Surge/TotM to fire without waiting for 20 stacks.
+  # =========================================================================
+
+  first_burst: "player.combat.time<10&debuff.touch_of_the_magi.down"
+
+  fresh_pack: "player.combat.time>=10&debuff.touch_of_the_magi.down&cooldown.arcane_surge.ready&cooldown.touch_of_the_magi.ready&buff.arcane_salvo.stack<config.fresh_pack_salvo_threshold"
+
+  skip_salvo_pooling: "var.first_burst|var.fresh_pack"
+
+  # Legacy opener alias (kept for movement list compatibility)
+  opener: "var.first_burst"
 
   # Trinket detection
   steroid_trinket_equipped: "equipped.lily_of_the_eternal_weave|equipped.sunblood_amethyst|equipped.astral_gladiators_badge_of_ferocity|equipped.arazs_ritual_forge|equipped.freightrunners_flask|equipped.emberwing_feather|equipped.vaelgors_final_stare|equipped.galactic_gladiators_badge_of_ferocity|equipped.nevermelting_ice_crystal|equipped.ever_collapsing_void_fissure|equipped.signet_of_the_priory|equipped.incorporeal_essencegorger|equipped.sealed_chaos_urn"
@@ -220,33 +256,49 @@ lists:
     - trinket_2,if=trinket_2.sync&var.nonsteroid_trinket_equipped&((buff.arcane_surge.down&cooldown.arcane_surge.remains>20)|!var.steroid_trinket_equipped)
 
   # ==================================================================
-  # COOLDOWNS — only runs when rotation ON, alive, in combat, valid target
+  # COOLDOWNS
   # ==================================================================
   cooldowns:
     - call_action_list,name=emergency
 
-    # Mirror Image — on CD per APL
+    # Mirror Image — on CD
     - mirror_image,range_check=none,if=cooldown.mirror_image.ready
 
-    # Opener: Orb (Spellslinger OrbM)
-    - arcane_orb,if=talent.splintering_sorcery&var.opener&lastcast.arcane_orb>15
+    # ------------------------------------------------------------------
+    # OPENER ORB (Spellslinger OrbM) — first burst only
+    # ------------------------------------------------------------------
+    - arcane_orb,if=talent.splintering_sorcery&var.first_burst&lastcast.arcane_orb>15
 
-    # Opener: Missiles (Sunfury)
-    - arcane_missiles,if=talent.spellfire_spheres&var.opener&buff.clearcasting.react
+    # ------------------------------------------------------------------
+    # OPENER MISSILES (Sunfury) — first burst only
+    # ------------------------------------------------------------------
+    - arcane_missiles,if=talent.spellfire_spheres&var.first_burst&buff.clearcasting.react
 
-    # Build Salvo to 20 before CDs (Spellslinger)
-    - arcane_blast,if=talent.splintering_sorcery&buff.arcane_salvo.stack<20&(var.opener|(talent.orb_mastery&cooldown.arcane_surge.remains<(gcd.max*(mana.pct/(8+(8*(var.cleave)))))))
+    # ------------------------------------------------------------------
+    # SALVO BUILDING — only when NOT bypassing pooling
+    # Normal cycles: build to 20 stacks before entering CDs.
+    # First burst / fresh pack: skip this entirely → go straight to Surge.
+    # ------------------------------------------------------------------
+    - arcane_blast,if=!var.skip_salvo_pooling&talent.splintering_sorcery&buff.arcane_salvo.stack<20&(talent.orb_mastery&cooldown.arcane_surge.remains<(gcd.max*(mana.pct/(8+(8*(var.cleave))))))
 
-    # Arcane Surge
+    # ------------------------------------------------------------------
+    # ARCANE SURGE
+    # Normal: fires when Salvo building line above is satisfied (stack>=20)
+    #         or when Surge just comes off CD naturally.
+    # Bypass: fires immediately because the building line was skipped.
+    # ------------------------------------------------------------------
     - arcane_surge
 
-    # Touch of the Magi — Spellslinger: immediately after Surge
+    # ------------------------------------------------------------------
+    # TOUCH OF THE MAGI
+    # Spellslinger: immediately after Surge
+    # ------------------------------------------------------------------
     - touch_of_the_magi,if=talent.splintering_sorcery&buff.arcane_surge.up&debuff.touch_of_the_magi.down
 
-    # Touch of the Magi — Sunfury: end of Surge window
+    # Sunfury: end of Surge window
     - touch_of_the_magi,if=talent.spellfire_spheres&buff.arcane_surge.up&buff.arcane_surge.remains<(5+gcd.remains)&debuff.touch_of_the_magi.down
 
-    # Touch of the Magi — off-CD maintenance when Surge is far away
+    # Off-CD maintenance when Surge is far away
     - touch_of_the_magi,if=cooldown.touch_of_the_magi.ready&cooldown.arcane_surge.remains>30&buff.arcane_surge.down&debuff.touch_of_the_magi.down
 
     # Evocation
@@ -324,11 +376,13 @@ lists:
   # MAIN — entry point
   # ==================================================================
   main:
+    - call_action_list,name=sanity_checks
+
     # Spell queue (addon priority queue)
     - call_action_list,name=spell_queue
 
     # ============================================================
-    # HARD STOPS — inline returns so rotation truly halts
+    # HARD STOPS
     # ============================================================
     - return,if=!state.rotation
     - return,if=player.dead
@@ -352,7 +406,6 @@ lists:
 
     # ============================================================
     # COMBAT GATE — BEFORE any offensive precombat spells
-    # "Off" checked first so untoggling force-combat stops everything
     # ============================================================
     - return,if=!player.combat&config.auto_combat.has(0)
     - return,if=!player.combat&!((config.auto_combat.has(1)&target.quest_mob&target.enemy)|(config.auto_combat.has(2)&target.combat&target.enemy)|(config.auto_combat.has(3)&player.auto_attacking&target.enemy))
