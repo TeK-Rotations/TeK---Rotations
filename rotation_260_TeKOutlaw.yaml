@@ -157,8 +157,13 @@ variables:
   safe_interrupt_window_late: target.casting.elapsed>=var.interrupt_delay_max&target.casting.remains>0.3
 
 lists:
+  combat_checks:
+    - return,if=!target.valid&!((config.auto_combat.has(1)&target.quest_mob&target.enemy&!target.dead)|(config.auto_combat.has(2)&target.combat&target.enemy&!target.dead)|(config.auto_combat.has(3)&target.targeting_party&target.enemy&!target.dead))
+    - return,if=!target.valid&config.auto_combat.has(0)
+
   main:
     - return,if=!state.rotation|player.mounted
+    - call_action_list,name=sanity_checks
 
     # === POISONS (out of combat OK) ===
     - instant_poison,interrupt=true,casting_check=all,range_check=none,moving=false,if=config.mainhand_poison=1&!buff.instant_poison.up&!player.mounted
