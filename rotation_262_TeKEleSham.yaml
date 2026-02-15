@@ -82,7 +82,9 @@ variables:
 
 lists:
   main:
+    - call_action_list,name=sanity_checks
     - return,if=!state.rotation|player.mounted
+    
 
     # === GHOST WOLF (out of combat, skipped during Spiritwalker's Grace) ===
     - ghost_wolf,range_check=none,if=config.use_ghost_wolf&!player.combat&player.moving&!buff.ghost_wolf.up&!var.can_cast_moving
