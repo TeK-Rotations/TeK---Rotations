@@ -1,9 +1,8 @@
-version: 1
+version: 3
 author: Tek
 class: Shadow
-name: Shadow pew pew - TeK
+name: Shadow priest - TeK
 spec: 258
-version: 3
 entry: main
 
 morphs:
@@ -153,10 +152,39 @@ config:
     min: 0
     max: 3
     default: 1
-  apex_tentacle_slam:
-    label: "Apex 4/4"
+  
+  # Interrupt Configuration
+  interrupt_target:
+    label: "Interrupt Target"
+    type: checkbox
+    default: true
+  interrupt_mouseover:
+    label: "Interrupt Mouseover"
     type: checkbox
     default: false
+  interrupt_focus:
+    label: "Interrupt Focus"
+    type: checkbox
+    default: false
+  interrupt_all:
+    label: "Interrupt All"
+    type: checkbox
+    default: true
+  
+  # Auto Combat Configuration
+  auto_combat:
+    label: "Auto Combat Mode"
+    type: dropdown
+    options:
+      - label: "Disabled"
+        value: 0
+      - label: "Quest Mobs"
+        value: 1
+      - label: "Combat Targets"
+        value: 2
+      - label: "Auto Attack"
+        value: 3
+    default: 2
   
   # Time to Die (Cooldown Protection)
   ttd_voidform:
@@ -193,8 +221,14 @@ config:
 variables:
   enemies_need_vt: active_enemies-nameplates.debuff.vampiric_touch.count
   
+  # APL AoE Variables System - intelligent dot management
+  dots_up: active_dot.vampiric_touch=active_enemies&active_dot.shadow_word_pain>=active_dot.vampiric_touch,if=active_enemies<3
+  max_vts: active_enemies
+  is_vt_possible: target.time_to_die>12&active_enemies<=8
+  holding_tentacle_slam: false  # No raid_event in live M+, always false
+  
   # Angelic Feather automation
-  should_cast_feather: "!buff.angelic_feather.up&player.moving&player.moving.time>=config.angelic_feather_delay&cooldown.angelic_feather.charges>0&!mounted&((config.angelic_feather_enable=1&player.combat)|(config.angelic_feather_enable=2&!player.combat)|(config.angelic_feather_enable=3))"
+  should_cast_feather: "config.angelic_feather_enable&!buff.angelic_feather.up&player.moving&player.moving.time>=config.angelic_feather_delay&cooldown.angelic_feather.charges>0&!mounted"
   
   # Blood Elf Arcane Torrent
   has_arcane_torrent: player.race=10
@@ -210,145 +244,144 @@ lists:
   spell_queue:
     - queue_spell
 
-  racials:
-    # Racial cooldowns - sync with Voidform and Power Infusion
-    #- fireblood,if=buff.voidform.up&buff.power_infusion.up|target.time_to_die<=8
-    #- berserking,if=buff.voidform.up&buff.power_infusion.up|target.time_to_die<=12
-    #- blood_fury,if=buff.voidform.up&buff.power_infusion.up|target.time_to_die<=15
-    #- ancestral_call,if=buff.voidform.up&buff.power_infusion.up|target.time_to_die<=15
+  racials: # Currently unused - can be uncommented for racial CDs
 
   trinkets:
     # Burst window synchronization - align with major CDs (only if target will live long enough)
     - trinket_1,if=buff.voidform.up&trinket_1.usable&target.health.pct>config.ttd_trinkets
     - trinket_2,if=buff.voidform.up&trinket_2.usable&target.health.pct>config.ttd_trinkets
-    # Fallback for Dark Ascension builds
-    - trinket_1,if=buff.dark_ascension.up&trinket_1.usable&target.health.pct>config.ttd_trinkets
-    - trinket_2,if=buff.dark_ascension.up&trinket_2.usable&target.health.pct>config.ttd_trinkets
     
   archon:
     # TeK Archon Rotation - Optimized for M+ with defensive layers
     # Priority Interrupts - Cancel Mind Flay for critical abilities
     
-    # Tentacle Slam for initial dot application (better than VT on fresh targets)
-    - tentacle_slam,interrupt=true,casting_check=mind_flay,if=target.enemy&(!dot.vampiric_touch.up|!dot.shadow_word_pain.up)
+    # High-priority SW:Madness - overcap prevention, Mind Devourer proc, refresh expiring dot (APL prio #4)
+    - shadow_word_madness,interrupt=true,casting_check=mind_flay,if=dot.shadow_word_madness.remains<=1.2|insanity>=65|buff.mind_devourer.up
     
-    # Multi-target dot application via Tentacle Slam
-    - tentacle_slam,interrupt=true,casting_check=mind_flay,if=target.enemy&active_enemies>1&nameplates.debuff.vampiric_touch.count<active_enemies
+    # Tentacle Slam - APL logic: refreshable, void apparitions, or maddening tentacles (APL prio #7)
+    - tentacle_slam,interrupt=true,casting_check=mind_flay,if=target.enemy&((talent.void_apparitions|talent.maddening_tentacles|dot.vampiric_touch.remains<=6.3)&(!var.holding_tentacle_slam|active_enemies>2)&(var.max_vts>0|active_enemies=1)&(cooldown.tentacle_slam.full_recharge_time<=gcd.max*2|active_enemies>5))
     
-    # Fallback to manual VT only if Tentacle Slam is on CD
-    - vampiric_touch,interrupt=true,casting_check=mind_flay,if=target.enemy&dot.vampiric_touch.remains<=6.3&!action.tentacle_slam.ready
-    - shadow_word_pain,interrupt=true,casting_check=mind_flay,if=target.enemy&dot.shadow_word_pain.refreshable&talent.invoked_nightmare&!action.tentacle_slam.ready
+    # Fallback VT - APL: refreshable, target will live, dots not all up, TS not available soon
+    - vampiric_touch,interrupt=true,casting_check=mind_flay,if=target.enemy&dot.vampiric_touch.remains<=6.3&var.is_vt_possible&(dot.vampiric_touch.ticking|!var.dots_up)&(var.max_vts>0|active_enemies=1)&cooldown.tentacle_slam.charges<1
+    - shadow_word_pain,interrupt=true,casting_check=mind_flay,if=target.enemy&dot.shadow_word_pain.refreshable&talent.invoked_nightmare&dot.vampiric_touch.ticking&var.is_vt_possible&cooldown.tentacle_slam.charges<1
     
-    # Burst window sequencing (save for healthy targets)
-    - voidform,interrupt=true,casting_check=mind_flay,if=target.health.pct>config.ttd_voidform
+    # Burst window sequencing - gate behind dots_up (APL: cds require dots_up)
+    - voidform,interrupt=true,casting_check=mind_flay,if=(active_enemies<3&var.dots_up|active_enemies>=3)&target.health.pct>config.ttd_voidform
     - trinket_1,interrupt=true,casting_check=mind_flay,if=buff.voidform.up&trinket_1.usable
     - trinket_2,interrupt=true,casting_check=mind_flay,if=buff.voidform.up&trinket_2.usable
-    - power_infusion,interrupt=true,casting_check=mind_flay,range_check=none,if=target.health.pct>config.ttd_power_infusion
+    - power_infusion,interrupt=true,casting_check=mind_flay,range_check=none,if=(buff.voidform.up|!talent.voidform)&target.health.pct>config.ttd_power_infusion
     - shadow_word_madness,interrupt=true,casting_check=mind_flay,if=buff.voidform.up&insanity>=50
     - shadow_word_madness,interrupt=true,casting_check=mind_flay,if=!buff.shadow_word_madness.up&insanity>=50
     - shadow_word_madness,interrupt=true,casting_check=mind_flay,if=insanity>=95
     - void_volley,interrupt=true,casting_check=mind_flay,if=buff.voidform.up
     - mind_blast,interrupt=true,casting_check=mind_flay
+    - shadow_word_death,interrupt=true,casting_check=mind_flay,if=target.health.pct<20&talent.idol_of_yshaarj
     - shadow_word_death,interrupt=true,casting_check=mind_flay
     - shadow_word_madness,interrupt=true,casting_check=mind_flay
     
     # Standard rotation priority
     
-    # Tentacle Slam for initial dot application (better than VT on fresh targets)
-    - tentacle_slam,if=target.enemy&(!dot.vampiric_touch.up|!dot.shadow_word_pain.up)
+    # High-priority SW:Madness - overcap prevention, Mind Devourer proc, refresh expiring dot
+    - shadow_word_madness,if=dot.shadow_word_madness.remains<=1.2|insanity>=65|buff.mind_devourer.up
     
-    # AoE dot spreading when enemies lack debuffs
-    - tentacle_slam,if=target.enemy&active_enemies>1&nameplates.debuff.vampiric_touch.count<active_enemies
+    # Tentacle Slam - APL logic: refreshable, void apparitions, or maddening tentacles
+    - tentacle_slam,if=target.enemy&((talent.void_apparitions|talent.maddening_tentacles|dot.vampiric_touch.remains<=6.3)&(!var.holding_tentacle_slam|active_enemies>2)&(var.max_vts>0|active_enemies=1)&(cooldown.tentacle_slam.full_recharge_time<=gcd.max*2|active_enemies>5))
     
-    # Fallback to manual VT only if Tentacle Slam is on CD
-    - vampiric_touch,if=target.enemy&dot.vampiric_touch.remains<=6.3&!action.tentacle_slam.ready
-    - shadow_word_pain,if=target.enemy&dot.shadow_word_pain.refreshable&talent.invoked_nightmare&!action.tentacle_slam.ready
+    # Fallback VT - APL: refreshable, target will live, dots not all up, TS not available soon
+    - vampiric_touch,if=target.enemy&dot.vampiric_touch.remains<=6.3&var.is_vt_possible&(dot.vampiric_touch.ticking|!var.dots_up)&(var.max_vts>0|active_enemies=1)&cooldown.tentacle_slam.charges<1
+    - shadow_word_pain,if=target.enemy&dot.shadow_word_pain.refreshable&talent.invoked_nightmare&dot.vampiric_touch.ticking&var.is_vt_possible&cooldown.tentacle_slam.charges<1
     
-    - voidform,if=target.health.pct>config.ttd_voidform
+    # SW:Madness - refresh low pmultiplier (APL prio #8)
+    - shadow_word_madness,if=dot.shadow_word_madness.remains>0&dot.shadow_word_madness.remains<=3
+    
+    - voidform,if=(active_enemies<3&var.dots_up|active_enemies>=3)&target.health.pct>config.ttd_voidform
     - trinket_1,if=buff.voidform.up&trinket_1.usable
     - trinket_2,if=buff.voidform.up&trinket_2.usable
-    - power_infusion,range_check=none,if=target.health.pct>config.ttd_power_infusion
+    - power_infusion,range_check=none,if=(buff.voidform.up|!talent.voidform)&target.health.pct>config.ttd_power_infusion
     - shadow_word_madness,if=buff.voidform.up&insanity>=50
     - shadow_word_madness,if=!buff.shadow_word_madness.up&insanity>=50
     - shadow_word_madness,if=insanity>=95
     - void_volley,if=buff.voidform.up
     - mind_blast
+    - shadow_word_death,if=target.health.pct<20&talent.idol_of_yshaarj
     - shadow_word_death
     
-    # Charge management filler (save charges for next pack if target is low)
-    - tentacle_slam,if=target.enemy&target.health.pct>config.ttd_tentacle_charges
-    
+    - mind_flay_insanity
     - shadow_word_madness
-    - mind_flay
+    - mind_flay,chain=1,interrupt_if=2
 
   voidweaver:
     # TeK Voidweaver Rotation - Entropic Rift optimization
     # Priority Interrupts - Cancel Mind Flay for critical abilities
     
-    # Tentacle Slam for initial dot application (better than VT on fresh targets)
-    - tentacle_slam,interrupt=true,casting_check=mind_flay,if=target.enemy&(!dot.vampiric_touch.up|!dot.shadow_word_pain.up)
+    # High-priority SW:Madness - overcap prevention, Mind Devourer proc, refresh expiring dot (APL prio #4)
+    - shadow_word_madness,interrupt=true,casting_check=mind_flay,if=dot.shadow_word_madness.remains<=1.2|insanity>=65|buff.mind_devourer.up
     
-    # Charge dump when 3+ targets need VT
-    - tentacle_slam,interrupt=true,casting_check=mind_flay,if=target.enemy&cooldown.tentacle_slam.charges>=1.9&var.enemies_need_vt>2
+    # Tentacle Slam - APL logic: refreshable, void apparitions, or maddening tentacles (APL prio #7)
+    - tentacle_slam,interrupt=true,casting_check=mind_flay,if=target.enemy&((talent.void_apparitions|talent.maddening_tentacles|dot.vampiric_touch.remains<=6.3)&(!var.holding_tentacle_slam|active_enemies>2)&(var.max_vts>0|active_enemies=1)&(cooldown.tentacle_slam.full_recharge_time<=gcd.max*2|active_enemies>5))
     
-    # Fallback to manual VT only if Tentacle Slam is on CD
-    - vampiric_touch,interrupt=true,casting_check=mind_flay,if=target.enemy&dot.vampiric_touch.remains<=6.3&!action.tentacle_slam.ready
-    - shadow_word_pain,interrupt=true,casting_check=mind_flay,if=target.enemy&dot.shadow_word_pain.refreshable&talent.invoked_nightmare&!action.tentacle_slam.ready
+    # Fallback VT - APL: refreshable, target will live, dots not all up, TS not available soon
+    - vampiric_touch,interrupt=true,casting_check=mind_flay,if=target.enemy&dot.vampiric_touch.remains<=6.3&var.is_vt_possible&(dot.vampiric_touch.ticking|!var.dots_up)&(var.max_vts>0|active_enemies=1)&cooldown.tentacle_slam.charges<1
+    - shadow_word_pain,interrupt=true,casting_check=mind_flay,if=target.enemy&dot.shadow_word_pain.refreshable&talent.invoked_nightmare&dot.vampiric_touch.ticking&var.is_vt_possible&cooldown.tentacle_slam.charges<1
     
-    # Burst window sequencing (save for healthy targets)
-    - voidform,interrupt=true,casting_check=mind_flay,if=target.health.pct>config.ttd_voidform
+    # Burst window sequencing - gate behind dots_up (APL: cds require dots_up)
+    - voidform,interrupt=true,casting_check=mind_flay,if=(active_enemies<3&var.dots_up|active_enemies>=3)&target.health.pct>config.ttd_voidform
     - trinket_1,interrupt=true,casting_check=mind_flay,if=buff.voidform.up&trinket_1.usable
     - trinket_2,interrupt=true,casting_check=mind_flay,if=buff.voidform.up&trinket_2.usable
-    - power_infusion,interrupt=true,casting_check=mind_flay,range_check=none,if=target.health.pct>config.ttd_power_infusion
-    - void_torrent,interrupt=true,casting_check=mind_flay,if=target.health.pct>config.ttd_void_torrent
+    - power_infusion,interrupt=true,casting_check=mind_flay,range_check=none,if=(buff.voidform.up|!talent.voidform)&target.health.pct>config.ttd_power_infusion
+    - void_torrent,interrupt=true,casting_check=mind_flay,if=(active_enemies<3&var.dots_up|active_enemies>=3)&target.health.pct>config.ttd_void_torrent
     - mind_blast,interrupt=true,casting_check=mind_flay,if=buff.entropic_rift.up
     - shadow_word_madness,interrupt=true,casting_check=mind_flay,if=buff.entropic_rift.up&insanity>=50
     - shadow_word_madness,interrupt=true,casting_check=mind_flay,if=!buff.shadow_word_madness.up&insanity>=50
     - shadow_word_madness,interrupt=true,casting_check=mind_flay,if=insanity>=95
     - void_volley,interrupt=true,casting_check=mind_flay,if=buff.voidform.up
     - mind_blast,interrupt=true,casting_check=mind_flay
+    - shadow_word_death,interrupt=true,casting_check=mind_flay,if=target.health.pct<20&talent.idol_of_yshaarj
     - shadow_word_death,interrupt=true,casting_check=mind_flay
     - shadow_word_madness,interrupt=true,casting_check=mind_flay
     
     # Standard rotation priority
     
-    # Tentacle Slam for initial dot application (better than VT on fresh targets)
-    - tentacle_slam,if=target.enemy&(!dot.vampiric_touch.up|!dot.shadow_word_pain.up)
+    # High-priority SW:Madness - overcap prevention, Mind Devourer proc, refresh expiring dot
+    - shadow_word_madness,if=dot.shadow_word_madness.remains<=1.2|insanity>=65|buff.mind_devourer.up
     
-    # Multi-target or charge cap management (save charges if target is low HP)
-    - tentacle_slam,if=target.enemy&((active_enemies>1&nameplates.debuff.vampiric_touch.count<active_enemies)|(cooldown.tentacle_slam.charges>=1.9&target.health.pct>config.ttd_tentacle_charges))
+    # Tentacle Slam - APL logic: refreshable, void apparitions, or maddening tentacles
+    - tentacle_slam,if=target.enemy&((talent.void_apparitions|talent.maddening_tentacles|dot.vampiric_touch.remains<=6.3)&(!var.holding_tentacle_slam|active_enemies>2)&(var.max_vts>0|active_enemies=1)&(cooldown.tentacle_slam.full_recharge_time<=gcd.max*2|active_enemies>5))
     
-    # Fallback to manual VT only if Tentacle Slam is on CD
-    - vampiric_touch,if=target.enemy&dot.vampiric_touch.remains<=6.3&!action.tentacle_slam.ready
-    - shadow_word_pain,if=target.enemy&dot.shadow_word_pain.refreshable&talent.invoked_nightmare&!action.tentacle_slam.ready
+    # Fallback VT - APL: refreshable, target will live, dots not all up, TS not available soon
+    - vampiric_touch,if=target.enemy&dot.vampiric_touch.remains<=6.3&var.is_vt_possible&(dot.vampiric_touch.ticking|!var.dots_up)&(var.max_vts>0|active_enemies=1)&cooldown.tentacle_slam.charges<1
+    - shadow_word_pain,if=target.enemy&dot.shadow_word_pain.refreshable&talent.invoked_nightmare&dot.vampiric_touch.ticking&var.is_vt_possible&cooldown.tentacle_slam.charges<1
     
-    - voidform,if=target.health.pct>config.ttd_voidform
+    # SW:Madness - refresh low pmultiplier (APL prio #8)
+    - shadow_word_madness,if=dot.shadow_word_madness.remains>0&dot.shadow_word_madness.remains<=3
+    
+    - voidform,if=(active_enemies<3&var.dots_up|active_enemies>=3)&target.health.pct>config.ttd_voidform
     - trinket_1,if=buff.voidform.up&trinket_1.usable
     - trinket_2,if=buff.voidform.up&trinket_2.usable
-    - power_infusion,range_check=none,if=target.health.pct>config.ttd_power_infusion
+    - power_infusion,range_check=none,if=(buff.voidform.up|!talent.voidform)&target.health.pct>config.ttd_power_infusion
     - shadow_word_madness,if=buff.voidform.up&!buff.shadow_word_madness.up&insanity>=30
-    - void_torrent,if=buff.voidform.up&target.health.pct>config.ttd_void_torrent
+    - void_torrent,if=(active_enemies<3&var.dots_up|active_enemies>=3)&target.health.pct>config.ttd_void_torrent
     - mind_blast,if=buff.entropic_rift.up
     - shadow_word_madness,if=buff.entropic_rift.up&insanity>=40
     - shadow_word_madness,if=!buff.shadow_word_madness.up&insanity>=30
     - shadow_word_madness,if=insanity>=95
     - void_volley,if=buff.voidform.up
     - mind_blast
+    - shadow_word_death,if=target.health.pct<20&talent.idol_of_yshaarj
     - shadow_word_death
     
-    # Charge management filler (save charges for next pack if target is low)
-    - tentacle_slam,if=target.enemy&target.health.pct>config.ttd_tentacle_charges
-    
+    - mind_flay_insanity
     - shadow_word_madness
-    - mind_flay
+    - mind_flay,chain=1,interrupt_if=2
+
+  auto_target:
+    - auto_target
 
   precombat:
     - shadowform,range_check=none,if=!buff.shadowform.up
     - arcane_torrent,if=var.has_arcane_torrent&target.enemy&var.target_purgeable
-    - vampiric_touch
 
   out_of_combat:
-    # Future: Add out-of-combat healing here if needed
 
   main:
     # Rotation state check - exit if rotation disabled or mounted
@@ -367,51 +400,35 @@ lists:
     - call_action_list,name=sanity_checks
     - call_action_list,name=auto_target
 
-    # TeK: Emergency defensives (consolidated for performance)
+    # Emergency defensives
     - dispersion,if=config.dispersion_enable&player.health.pct<=config.dispersion_hp
     - desperate_prayer,if=(player.health.pct<=config.desperate_prayer_hp)|(player.health.pct<=50&debuff.duration>0)|(player.health.pct<=40&cooldown.dispersion.remains>30)
-    
-    # TeK: Tank Desperate Prayer (adapted from Alegr0n's Disc logic)
     - desperate_prayer.tank,if=config.desperate_prayer_tank&group.tank.health.pct<=config.desperate_prayer_tank_hp
-    
     - healthstone,if=config.healthstone_enable&item.healthstone.count>0&((player.health.pct<=config.healthstone_hp&cooldown.desperate_prayer.remains>5)|player.health.pct<=25)
-    
-    # TeK: Vampiric Embrace - self emergency OR allies need healing (adapted from Alegr0n)
     - vampiric_embrace,if=config.vampiric_embrace_enable&!buff.dispersion.up&((player.health.pct<=config.vampiric_embrace_self_hp)|(group.count(cycle.health.pct<config.vampiric_embrace_allies_hp)>=config.vampiric_embrace_allies))
-    
-    # TeK: Purify Disease (adapted from Alegr0n's Disc logic)
     - purify_disease,if=config.purify_disease_enable&player.dispelable.purify_disease
     - purify_disease,target=lowest,if=config.purify_disease_enable&config.purify_disease_targets=2&group.lowest.dispelable.purify_disease
     - purify_disease,cycle=members,if=config.purify_disease_enable&config.purify_disease_targets=2&cycle.dispelable.purify_disease
-    
-    # TeK: Mass Dispel (adapted from Alegr0n's Disc logic)
     - mass_dispel,if=config.mass_dispel_enable&group.count(cycle.has_magic_debuff)>=config.mass_dispel_members
-    
     - power_word_shield,if=config.pw_shield_enable&player.health.pct<=config.pw_shield_hp
-    
-    # TeK: Smart Ally Shield (adapted from Alegr0n's Disc logic)
     - power_word_shield,target=lowest,if=config.pw_shield_enable&config.pw_shield_allies&group.lowest.health.pct<=config.pw_shield_allies_hp&group.lowest.buff.remains(power_word_shield)=0
     - power_word_shield,cycle=members,if=config.pw_shield_enable&config.pw_shield_allies&cycle.health.pct<=config.pw_shield_allies_hp&cycle.buff.power_word_shield.down
-    
     - fade,if=player.threat>90&target.target!=player
-    
-    # TeK: Emergency Flash Heal (adapted from Alegr0n's Disc logic - combat only)
-    - flash_heal,if=config.flash_heal_enable&player.health.pct<config.flash_heal_hp&!player.moving
+    - flash_heal.player,if=config.flash_heal_enable&player.health.pct<config.flash_heal_hp&!player.moving
     - flash_heal,target=lowest,if=config.flash_heal_enable&config.flash_heal_targets=2&group.lowest.health.pct<config.flash_heal_allies_hp&!player.moving
     - flash_heal,cycle=members,if=config.flash_heal_enable&config.flash_heal_targets=2&cycle.health.pct<config.flash_heal_allies_hp&!player.moving
 
-    # TeK: Offensive dispels - Arcane Torrent for enrages and shields (inspired by Alegr0n)
+    # Offensive dispels
     - arcane_torrent,if=var.has_arcane_torrent&target.enemy&var.target_purgeable&target.range<=8
-
     - shadowform,range_check=none,if=!buff.shadowform.up
-
-    # TeK: Movement optimization
+    
+    # Movement optimization
     - power_word_shield,if=player.moving&talent.body_and_soul&buff.angelic_feather.remains<=0.2&cooldown.angelic_feather.charges==0&buff.power_word_shield.down
 
     # Moving DPS rotation
     - mind_flay_insanity,interrupt=true,casting_check=all,if=player.moving&buff.mind_flay_insanity.up
     - shadow_word_madness,interrupt=true,casting_check=all,if=player.moving&insanity>=95
-    - tentacle_slam,interrupt=true,casting_check=all,if=target.enemy&player.moving&((active_enemies>1&nameplates.debuff.vampiric_touch.count<active_enemies)|(cooldown.tentacle_slam.charges>=1.9&target.health.pct>config.ttd_tentacle_charges))
+    - tentacle_slam,interrupt=true,casting_check=all,if=target.enemy&player.moving&((talent.void_apparitions|talent.maddening_tentacles|dot.vampiric_touch.remains<=6.3)&(!var.holding_tentacle_slam|active_enemies>2)&(var.max_vts>0|active_enemies=1)&(cooldown.tentacle_slam.full_recharge_time<=gcd.max*2|active_enemies>5))
     - shadow_word_death,interrupt=true,casting_check=all,if=player.moving&target.health.pct<20
     - shadow_word_pain,interrupt=true,casting_check=all,if=player.moving&talent.invoked_nightmare
 
@@ -419,9 +436,9 @@ lists:
     - return,if=player.moving&!action.mind_flay_insanity.ready&!action.tentacle_slam.ready&!action.shadow_word_death.ready&!action.shadow_word_pain.ready&(cooldown.angelic_feather.charges>0|buff.angelic_feather.remains>0.2|(talent.body_and_soul&cooldown.angelic_feather.charges==0&cooldown.angelic_feather.remains>0))
 
     # Interrupts
-    - silence,if=config.interrupt_target&(config.interrupt_all&target.casting.interruptible|interrupts.target.ready)&target.casting.elapsed>=0.2&(target.casting.remains<1|target.channeling)
-    - silence.mouseover,if=config.interrupt_mouseover&(config.interrupt_all&mouseover.casting.interruptible|interrupts.mouseover.ready)&mouseover.casting.elapsed>=0.2&(mouseover.casting.remains<1|mouseover.channeling)
-    - silence.focus,if=config.interrupt_focus&(config.interrupt_all&focus.casting.interruptible|interrupts.focus.ready)&focus.casting.elapsed>=0.2&(focus.casting.remains<1|focus.channeling)
+    - silence,if=config.interrupt_target&(config.interrupt_all&target.casting.interruptible)&target.casting.elapsed>=0.2&(target.casting.remains<1|target.channeling)
+    - silence.mouseover,if=config.interrupt_mouseover&(config.interrupt_all&mouseover.casting.interruptible)&mouseover.casting.elapsed>=0.2&(mouseover.casting.remains<1|mouseover.channeling)
+    - silence.focus,if=config.interrupt_focus&(config.interrupt_all&focus.casting.interruptible)&focus.casting.elapsed>=0.2&(focus.casting.remains<1|focus.channeling)
 
     # Combat Check
     - return,if=!player.combat&!((config.auto_combat.has(1)&target.quest_mob&target.enemy)|(config.auto_combat.has(2)&target.combat&target.enemy)|(config.auto_combat.has(3)&player.auto_attacking&target.enemy))
